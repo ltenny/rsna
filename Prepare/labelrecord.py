@@ -1,6 +1,7 @@
 import pandas as pd 
 import pydicom
 
+# Simple class to manage label records.
 class LabelRecord(object):
 
     def __init__(self, filename='', hasBoundingBox=False, boundingBoxes=[]):
@@ -20,4 +21,4 @@ class LabelRecord(object):
                 records[pid].boundingBoxes.append(extract(row))
         
         return records
-
+           
