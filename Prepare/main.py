@@ -5,6 +5,7 @@
 
 import tensorflow as tf
 from labelrecord import LabelRecord
+import cxrimage
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('positives_dir','positives',"""Directory for the positive image regions""")
@@ -32,14 +33,15 @@ def main(argv=None):
     print('loading labels from %s' % FLAGS.label_file)
     lr = LabelRecord()
     label_records = lr.load(FLAGS.label_file)
-    cnt = 0
-    for (_,v) in label_records.items():
-        if v.hasBoundingBox:
-            cnt = cnt + 1
-    print('%d records have bounding boxes' % cnt)
 
-    bb = _get_bounding_boxes(label_records)
-    print('found %d bounding boxes' % len(bb))
+    all_bounding_boxes = _get_bounding_boxes(label_records)
+
+    for (_,v) in label_records.items():
+        image = cxrimage.get_image_data(v.filename, FLAGS.image_path)
+        if v.hasBoundingBox:
+            for box in v.boundingBoxes:
+                print('writing image for %s' % v.filename)
+                cxrimage.write_image(cxrimage.extract_image(image, box),FLAGS.positives_dir)
 
 if __name__ == '__main__':
     tf.app.run()

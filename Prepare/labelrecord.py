@@ -4,13 +4,13 @@ import pydicom
 # Simple class to manage label records.
 class LabelRecord(object):
 
-    def __init__(self, filename='', hasBoundingBox=False, boundingBoxes=[]):
+    def __init__(self, filename='', hasBoundingBox=False):
         self.filename = filename
         self.hasBoundingBox = hasBoundingBox
-        self.boundingBoxes = boundingBoxes
+        self.boundingBoxes = []
 
     def load(self, label_file):
-        extract = lambda row: [row['y'], row['x'], row['height'], row['width']]
+        extract = lambda row: [int(row['y']), int(row['x']), int(row['height']), int(row['width'])]
         data = pd.read_csv(label_file)
         records = {}
         for _, row in data.iterrows():
