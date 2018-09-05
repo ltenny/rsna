@@ -5,10 +5,14 @@
 
 import tensorflow as tf
 import numpy as np
+import sys
+sys.path.append('../')
 from labelrecord import LabelRecord
 import cxrimage
+import os
 
 FLAGS = tf.app.flags.FLAGS
+tf.app.flags.DEFINE_string('examples_dir','examples',"""Directory for the cxr example images""")
 tf.app.flags.DEFINE_string('originals_dir','originals',"""Directory for the original cxr images""")
 tf.app.flags.DEFINE_string('positives_dir','positives',"""Directory for the positive image regions""")
 tf.app.flags.DEFINE_string('negatives_dir','negatives',"""Directory for the negative image regions""")
@@ -27,6 +31,10 @@ def _init_output_directories():
     if tf.gfile.Exists(FLAGS.originals_dir):
         tf.gfile.DeleteRecursively(FLAGS.originals_dir)
     tf.gfile.MakeDirs(FLAGS.originals_dir)
+
+    if tf.gfile.Exists(FLAGS.examples_dir):
+        tf.gfile.DeleteRecursively(FLAGS.examples_dir)
+    tf.gfile.MakeDirs(FLAGS.examples_dir)
 
 
 # returns collection of all bounding boxes
@@ -53,7 +61,9 @@ def main(argv=None):
             box = all_bounding_boxes[np.random.random_integers(0, len(all_bounding_boxes) - 1)]
             cxrimage.write_image(cxrimage.extract_image(image, box), FLAGS.negatives_dir)
 
-        cxrimage.write_image_with_bounding_boxes(image, FLAGS.originals_dir, "%s.jpg" % v.filename, v.boundingBoxes)
+        basefilename = os.path.splitext(v.filename)[0]
+        cxrimage.write_image(image, FLAGS.examples_dir, "%s.jpg" % basefilename)
+        cxrimage.write_image_with_bounding_boxes(image, FLAGS.originals_dir, "%s.jpg" % basefilename, v.boundingBoxes)
 
 if __name__ == '__main__':
     tf.app.run()
