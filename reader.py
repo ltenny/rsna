@@ -1,17 +1,32 @@
 import tensorflow as tf 
 import numpy as np 
 import os
+from labelrecord import LabelRecord
+import sys
 
 IMAGE_SIZE = 1024
 
 NUM_EXAMPLES_FOR_TRAIN = 25680  # for stage 1, might change in the future
 NUM_EXAMPLES_FOR_TEST = 500     # check this
 
+label_records = {}
+
+# call this before creating any batches
+def init_label_records(labelfile):
+    lr = LabelRecord()
+    label_records = lr.load(labelfile)
+    if len(label_records) == 0:
+        sys.exit("Failed to load labels")
+
 # returns ground truth boxes for the given file
 # TODO: actually get the boxes if any
 def get_boxes(filename):
-    #for now
-    return tf.convert_to_tensor(np.array[[1,1,1,1]], dtype=tf.int32)
+    if len(label_records) == 0:
+        sys.exit("Must call init_label_records() in reader.py before creating batches")
+
+    pid = os.path.splitext(filename)[0]
+    boxes = label_records[pid].boundingBoxes
+    return tf.convert_to_tensor(boxes, dtype=tf.int32)
 
 # reads a single example and returns the image along with the ground truth boxes
 def read_example(filename_queue):
