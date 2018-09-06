@@ -155,16 +155,16 @@ def rpn_model(images):
     
     # box-regression layer
     with tf.variable_scope('ren_reg') as scope:
-        kernel = variable_with_weight_decay('weights', shape=[1,1,256,4], stddev=5e-2)
+        kernel = variable_with_weight_decay('weights', shape=[1,1,256,36], stddev=5e-2)
         conv = tf.nn.conv2d(ren_conv, kernel, [1,1,1,1], padding='SAME')
-        biases = variable_on_cpu('biases',[4], tf.constant_initializer(0.0))
+        biases = variable_on_cpu('biases',[36], tf.constant_initializer(0.0))
         ren_reg = tf.nn.bias_add(conv, biases)
 
     # box-classification layer
     with tf.variable_scope('ren_cls') as scope:
-        kernel = variable_with_weight_decay('weights', shape=[1,1,256,2], stddev=5e-2)
+        kernel = variable_with_weight_decay('weights', shape=[1,1,256,18], stddev=5e-2)
         conv = tf.nn.conv2d(ren_conv, kernel, [1,1,1,1], padding='SAME')
-        biases = variable_on_cpu('biases',[4], tf.constant_initializer(0.0))
+        biases = variable_on_cpu('biases',[18], tf.constant_initializer(0.0))
         ren_cls = tf.nn.bias_add(conv, biases)
 
     # ren_reg has Ren's reg layer, ren_cls has Ren's cls layer
