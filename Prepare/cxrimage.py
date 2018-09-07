@@ -11,9 +11,7 @@ def make_image_data(pixel_array):
 
 # extracts the given bounding box from the [h,w,c] ndarray for the image
 def extract_image(image_data, box):
-    y1, x1, height, width = box
-    y2 = y1 + height
-    x2 = x1 + width
+    x1,y1,x2,y2 = box
     return image_data[y1:y2,x1:x2]
 
 # writes the extracted bounding box to the given output path with new filename
@@ -25,15 +23,14 @@ def write_image(image_data, path, filename=None):
         im.save(os.path.join(path,'%s.jpg' % str(uuid.uuid4())))
 
 def write_image_with_bounding_boxes(image_data, path, filename, boxes, rgb=[128,0,0]):
-    for box in boxes:
+    for i in range(0,boxes.shape[0],4):
+        box = boxes[i:i+4]
         image_data = _overlay_box(image_data, box, rgb)
     im = Image.fromarray(image_data)
     im.save(os.path.join(path, filename))
 
 def _overlay_box(im, box, rgb, stroke=6):
-    y1,x1,height, width = box
-    y2 = y1 + height
-    x2 = x1 + width
+    x1,y1,x2,y2 = box
     im[y1:y1+stroke, x1:x2] = rgb
     im[y2:y2+stroke, x1:x2] = rgb
     im[y1:y2, x1:x1+stroke] = rgb

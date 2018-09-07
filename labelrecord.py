@@ -1,5 +1,6 @@
 import pandas as pd 
 import pydicom
+import numpy as np 
 
 # Simple class to manage label records.
 class LabelRecord(object):
@@ -7,10 +8,17 @@ class LabelRecord(object):
     def __init__(self, filename='', hasBoundingBox=False):
         self.filename = filename
         self.hasBoundingBox = hasBoundingBox
-        self.boundingBoxes = []
+        self.boundingBoxes = np.array([],np.int32)
+
+    # box is represented as [x1,y1,x2,y2] which is an ndarray
+    def _extract_box(self, row):
+        x1 = int(row['x'])
+        y1 = int(row['y'])
+        x2 = x1 + int(row['width'])
+        y2 = y1 + int(row['height'])
+        return np.array([x1,y1,x2,y2], np.int32)
 
     def load(self, label_file):
-        extract = lambda row: [int(row['y']), int(row['x']), int(row['height']), int(row['width'])]
         data = pd.read_csv(label_file)
         records = {}
         for _, row in data.iterrows():
@@ -18,7 +26,7 @@ class LabelRecord(object):
             if pid not in records:
                 records[pid] = LabelRecord('%s.dcm' % pid, True if row['Target'] == 1 else False)
             if records[pid].hasBoundingBox:
-                records[pid].boundingBoxes.append(extract(row))
-        
+                records[pid].boundingBoxes = np.append(records[pid].boundingBoxes, self._extract_box(row))
+
         return records
            

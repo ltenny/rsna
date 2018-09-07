@@ -39,7 +39,11 @@ def _init_output_directories():
 
 # returns collection of all bounding boxes
 def _get_bounding_boxes(records):
-    return [box for (_,v) in records.items() for box in v.boundingBoxes if v.hasBoundingBox]
+    allboxes = np.array([],np.int32)
+    for _,v in records.items():
+        if v.hasBoundingBox:
+            allboxes = np.append(allboxes, v.boundingBoxes)
+    return allboxes
 
 # main entry point
 def main(argv=None):
@@ -54,15 +58,17 @@ def main(argv=None):
     for (_,v) in label_records.items():
         print('processing %s' % v.filename)
         image = cxrimage.get_image_data(v.filename, FLAGS.image_path)
+        basefilename = os.path.splitext(v.filename)[0]
         if v.hasBoundingBox:
-            for box in v.boundingBoxes:
+            for i in range(0,v.boundingBoxes.shape[0],4):
+                box = v.boundingBoxes[i:i+4]
                 cxrimage.write_image(cxrimage.extract_image(image, box),FLAGS.positives_dir)
+            cxrimage.write_image(image, FLAGS.examples_dir, "%s.jpg" % basefilename)
         else:
-            box = all_bounding_boxes[np.random.random_integers(0, len(all_bounding_boxes) - 1)]
+            i = np.int32((np.random.randint(0, np.max(all_bounding_boxes.shape[0]-4,0)))/ 4) * 4
+            box = all_bounding_boxes[i:i+4]
             cxrimage.write_image(cxrimage.extract_image(image, box), FLAGS.negatives_dir)
 
-        basefilename = os.path.splitext(v.filename)[0]
-        cxrimage.write_image(image, FLAGS.examples_dir, "%s.jpg" % basefilename)
         cxrimage.write_image_with_bounding_boxes(image, FLAGS.originals_dir, "%s.jpg" % basefilename, v.boundingBoxes)
 
 if __name__ == '__main__':
