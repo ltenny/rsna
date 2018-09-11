@@ -37,8 +37,8 @@ class CXRImage(object):
 
     @staticmethod
     def write_image_with_bounding_boxes(image_data, path, filename, boxes, rgb=[128,0,0]):
-        for i in range(0,boxes.shape[0],4):
-            box = boxes[i:i+4]
+        for i in range(0,boxes.shape[0]):
+            box = boxes[i,:]
             image_data = CXRImage.overlay_box(image_data, box, rgb)
         im = Image.fromarray(image_data)
         im.save(os.path.join(path, filename))

@@ -26,7 +26,10 @@ class LabelRecord(object):
             if pid not in records:
                 records[pid] = LabelRecord('%s.dcm' % pid, True if row['Target'] == 1 else False)
             if records[pid].hasBoundingBox:
-                records[pid].boundingBoxes = np.append(records[pid].boundingBoxes, self._extract_box(row))
+                if len(records[pid].boundingBoxes) == 0:
+                    records[pid].boundingBoxes = np.array([self._extract_box(row)])
+                else:
+                    records[pid].boundingBoxes = np.vstack([records[pid].boundingBoxes, self._extract_box(row)])
 
         return records
            
