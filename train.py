@@ -5,7 +5,7 @@ from __future__ import print_function
 from datetime import datetime
 import tensorflow as tf 
 import time
-import reader
+from utils.reader import Reader
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_state_dir','train_state',"""Directory for the training state info""")
@@ -18,6 +18,7 @@ tf.app.flags.DEFINE_boolean('log_device_placement',False,"""Log device placement
 
 def train():
     print("training...")
+    reader = Reader()
     with tf.Graph().as_default():
         global_step = tf.train.get_or_create_global_step()
         with tf.device('/cpu:0'):
@@ -43,7 +44,7 @@ def train():
                     self._start_time = current_time
                     
                     #loss_value = run_values.results
-                    loss_values = .1
+                    loss_value = .1
                     examples_per_sec = FLAGS.log_frequency * FLAGS.batch_size / duration
                     sec_per_batch = float(duration / FLAGS.log_frequency)
                     format_str = ('%s: step: %d, loss = %.2f (%.1f examples/sec, %.3f sec/batch)')
