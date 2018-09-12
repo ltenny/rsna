@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np 
+import tensorflow as tf
 
 class Anchor(object):
 
@@ -46,4 +47,43 @@ class Anchor(object):
         ws = w * scales
         hs = h * scales
         return self._make_anchors(ws, hs, x_center, y_center)
+
+    @staticmethod
+    def generate_anchors_initial(height, width, stride=16, scales=(8,16,32), ratios=(0.5,1,2)):
+        shift_x = tf.range(width) * stride
+        shift_y = tf.range(height) * stride
+        shift_x, shift_y = tf.meshgrid(shift_x,shift_y)
+        sx = tf.reshape(shift_x, shape=(-1,))
+        sy = tf.reshape(shift_y, shape=(-1,))
+        shifts = tf.transpose(tf.stack([sx,sy,sx,sy]))
+        K = tf.multiply(width,height)
+        shifts = tf.transpose(tf.reshape(shifts, shape=[1,K,4]),perm=(1,0,2))
+        a = Anchor(ratios=np.array(ratios),scales=np.array(scales))
+        anchors = a.generate()
+        A = anchors.shape[0]
+        anchor_constant = tf.constant(anchors.reshape((1,A,4)), dtype=tf.int32)
+        length = K * A
+        result = tf.reshape(tf.add(anchor_constant, shifts), shape=(length, 4))
+        return tf.cast(result, dtype=tf.float32), length
+
+    @staticmethod
+    def generate_anchors(height, width, stride=16, scales=(8,16,32), ratios=(0.5,1,2)):
+        a = Anchor(ratios=np.array(ratios), scales=np.array(scales))
+        anchors = a.generate()
+        A = anchors.shape[0]
+        shift_x = np.arange(0, width) * 16
+        shift_y = np.arange(0, height) * 16
+        shift_x, shift_y = np.meshgrid(shift_x, shift_y)
+        shifts = np.vstack((shift_x.ravel(), shift_y.ravel(), shift_x.ravel(), shift_y.ravel())).transpose()
+        K = shifts.shape[0]
+        anchors = anchors.reshape((1,A, 4)) + shifts.reshape((1,K,4)).transpose((1,0,2))
+        anchors = anchors.reshape((K * A, 4)).astype(np.float32, copy=False)
+        length = np.int32(anchors.shape[0])
+        return anchors, length
+
+
+
+
+
+
     

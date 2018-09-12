@@ -4,6 +4,9 @@ from __future__ import print_function
 
 import tensorflow as tf
 import re
+import numpy as np 
+from utils.anchor import Anchor
+from utils.layer import Layer
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_boolean('use_fp16', False, """Use tf.float16 vs tf.float32""")
@@ -24,7 +27,7 @@ class Model(object):
 
     def _variable_with_weight_decay(self, name, shape, stddev, wd=None):
         dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
-        var = _variable_on_cpu(name, shape, tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
+        var = self._variable_on_cpu(name, shape, tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
         if wd is not None:
             weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
             tf.add_to_collection('losses', weight_decay)
@@ -35,6 +38,7 @@ class Model(object):
         tf.summary.histogram(tensor_name + '/activations', x)
         tf.summary.scalar(tensor_name, '/sparsity', tf.nn.zero_fraction(x))
 
+
     # roughly follow ConvNet layers from VGG-16 with changes from S. Ren et.al. (Faster R-CNN)
     # NB: the code is completely un-rolled to make it easy to understand and tweak
     def build_rpn_model(self, images):
@@ -44,7 +48,7 @@ class Model(object):
             biases = self._variable_on_cpu('biasas', [64], tf.constant_initializer(0.0))
             pre_activation = tf.nn.bias_add(conv, biases)
             conv1 = tf.nn.relu(pre_activation, name=scope.name)
-            slef._activation_summary(conv1)
+            self._activation_summary(conv1)
 
         with tf.variable_scope('conv2') as scope:
             kernel = self._variable_with_weight_decay('weights', shape=[3,3,64,64], stddev=5e-2)
@@ -152,26 +156,47 @@ class Model(object):
 
         # with all 13 convolutional layers VGG-16 complete, now we take Ren's approach for the RPN 
         with tf.variable_scope('ren_conv') as scope:
-            kernel = self._variable_with_weight_decay('weights',shape=[3,3,512,256], stddev=5e-2)
+            # build the anchors for the image
+            height = tf.to_int32(tf.ceil(images.shape[1] / np.float32(16)))
+            width = tf.to_int32(tf.ceil(images.shape[2] / np.float32(16)))
+            anchors, anchors_length = Anchor.generate_anchors_initial(height, width, 16)
+            anchors.set_shape([None, 4])
+            anchors_length.set_shape([])
+
+            # build the 3x3 convnet
+            kernel = self._variable_with_weight_decay('weights', shape=[3,3,512,512], stddev=5e-2)
             conv = tf.nn.conv2d(conv13, kernel, [1,1,1,1], padding='SAME')
-            biases = self._variable_on_cpu('biases', [256], tf.constant_initializer(0.0))
+            biases = self._variable_on_cpu('biases',[512], tf.constant_initializer(0.0))
             pre_activation = tf.nn.bias_add(conv, biases)
             ren_conv = tf.nn.relu(pre_activation, name=scope.name)
             self._activation_summary(ren_conv)
-        
-        # box-regression layer
-        with tf.variable_scope('ren_reg') as scope:
-            kernel = self._variable_with_weight_decay('weights', shape=[1,1,256,36], stddev=5e-2)
-            conv = tf.nn.conv2d(ren_conv, kernel, [1,1,1,1], padding='SAME')
-            biases = self._variable_on_cpu('biases',[36], tf.constant_initializer(0.0))
-            ren_reg = tf.nn.bias_add(conv, biases)
 
         # box-classification layer
-        with tf.variable_scope('ren_cls') as scope:
-            kernel = self._variable_with_weight_decay('weights', shape=[1,1,256,18], stddev=5e-2)
-            conv = tf.nn.conv2d(ren_conv, kernel, [1,1,1,1], padding='SAME')
-            biases = self._variable_on_cpu('biases',[18], tf.constant_initializer(0.0))
-            ren_cls = tf.nn.bias_add(conv, biases)
+        with tf.variable_scope('rpn_cls') as scope:
+            channels = self._k_anchors * 2
+            kernel = self._variable_with_weight_decay('weights', shape=[1,1,512,channels], stddev=5e-2)
+            conv = tf.nn.conv2d(ren_conv, kernel, [1,1,1,1], padding='VALID')
+            biases = self._variable_on_cpu('biases',[channels], tf.constant_initializer(0.0))
+            rpn_cls_score = tf.nn.bias_add(conv, biases)
+            rpn_cls_score_reshape = Layer.reshape(rpn_cls_score, 2, name='rpn_cls_score_reshape')
+            
+            input_shape = tf.shape(rpn_cls_score_reshape)
+            reshaped = tf.reshape(rpn_cls_score_reshape, [-1, input_shape[-1]])
+            score = tf.nn.softmax(reshaped)
+            rpn_cls_prob_reshape = tf.reshape(score, input_shape)
+            
+            rpn_cls_pred = tf.argmax(tf.reshape(rpn_cls_score_reshape,[-1,2]), axis=1)
+            rpn_cls_prob = Layer.reshape(rpn_cls_prob_reshape, channels, name='rpn_cls_prob')
+        
+        # box-prediction layer
+        with tf.variable_scope('rpn_bbox_pred') as scope:
+            channels = self._k_anchors * 4
+            kernel = self._variable_with_weight_decay('weights', shape=[1,1,512,channels], stddev=5e-2)
+            conv = tf.nn.conv2d(ren_conv, kernel,[1,1,1,1], padding='VALID')
+            biases = self._variable_on_cpu('biases',[channels], tf.constant_initializer(0,0))
+            rpn_bbox_pred = tf.nn.bias_add(conv,biases)
+
+
 
         # ren_reg has Ren's reg layer, ren_cls has Ren's cls layer
         return ren_reg, ren_cls
