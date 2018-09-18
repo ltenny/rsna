@@ -4,3 +4,4 @@ negatives/*
 originals/*
 examples/*
 input/*
+*.tfrecord

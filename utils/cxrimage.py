@@ -50,3 +50,18 @@ class CXRImage(object):
         dcm_data = pydicom.read_file(fullpath)
         return CXRImage.make_image_data(dcm_data.pixel_array)
 
+    # extracts box from image, centers on new image with background set to
+    # the average of the extracted box, writes the new image to the given file
+    @staticmethod
+    def extract_center_and_write(image_data, box, height, width, path, filename=None) :
+        extracted_image = CXRImage.extract_image(image_data,box)
+        rgb_average = np.array([np.average(extracted_image[:,:,i]) for i in range(3)]).astype(int)
+        new_image = np.full((height, width,3), rgb_average,dtype=np.uint8)
+        bw = box[2] - box[0] # box width
+        bh = box[3] - box[1] # box height
+        y1 = np.ceil(height/2).astype(int) - np.floor(bh/2).astype(int)
+        x1 = np.ceil(width/2).astype(int) - np.floor(bw/2).astype(int)
+        new_image[y1:y1+bh,x1:x1+bw] = extracted_image
+        CXRImage.write_image(new_image, path, filename)
+
+

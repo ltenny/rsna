@@ -2,7 +2,7 @@ import pandas as pd
 import pydicom
 import numpy as np 
 
-# Simple class to manage label records.
+# class to manage label records.
 class LabelRecord(object):
 
     def __init__(self, filename='', hasBoundingBox=False):

@@ -81,9 +81,4 @@ class Anchor(object):
         length = np.int32(anchors.shape[0])
         return anchors, length
 
-
-
-
-
-
     
