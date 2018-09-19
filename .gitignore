@@ -1,6 +1,8 @@
 __pycache__/*
 positives/*
 negatives/*
+negatives_verify/*
+positives_verify/*
 originals/*
 examples/*
 input/*
