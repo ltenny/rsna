@@ -2,6 +2,7 @@ import tensorflow as tf
 from utils.cxrimage import CXRImage
 from utils.labelrecord import LabelRecord
 from utils.box import Box
+from utils.progress import Progress
 import os
 import glob
 from PIL import Image
@@ -44,11 +45,14 @@ class Record(object):
             image = Image.open(name)
             writer.write(Record.make_labeled_example(image,1).SerializeToString())
             total = total + 1
+            Progress.show_progress(total)
 
         for name in glob.glob(os.path.join(negatives,'*.jpg')):
             image = Image.open(name)
             writer.write(Record.make_labeled_example(image,0).SerializeToString())
             total = total + 1
+            Progress.show_progress(total)
+
         writer.close()
         return total
 

@@ -10,6 +10,7 @@ from utils.cxrimage import CXRImage
 from utils.labelrecord import LabelRecord
 from utils.record import Record
 from utils.box import Box
+from utils.progress import Progress
 import os
 
 FLAGS = tf.app.flags.FLAGS
@@ -50,12 +51,13 @@ def main(argv=None):
     print('Loading labels from %s' % FLAGS.label_file)
     lr = LabelRecord()
     label_records = lr.load(FLAGS.label_file)
-
     all_bounding_boxes = Box.get_all_bounding_boxes(label_records)
-
+    counter = 0
+    
     # fill examples, originals, negatives, and positives directories
+    print('Processing images...')
     for (_,v) in label_records.items():
-        print('processing %s' % v.filename)
+        Progress.show_progress(counter)
         image = CXRImage.get_image_data(v.filename, FLAGS.image_path)
         basefilename = os.path.splitext(v.filename)[0]
         if v.hasBoundingBox:
@@ -69,11 +71,12 @@ def main(argv=None):
             CXRImage.extract_center_and_write(image,box,1024,1024,FLAGS.negatives_dir)
 
         CXRImage.write_image_with_bounding_boxes(image, FLAGS.originals_dir, "%s.jpg" % basefilename, v.boundingBoxes)
+        counter = counter + 1
     
     # create the pre-training features by combining negatives and positives into pre_train.tfrecord
-    print('Creating pre-train file...')
-    total = Record.create_pre_train_file(FLAGS.positives_dir, FLAGS.negatives, FLAGS.pre_train_file)
-    print('%d files combined in %s' % (total, FLAGS.pre_train_file))
+    print('\nCreating pre-train file...')
+    total = Record.create_pre_train_file(FLAGS.positives_dir, FLAGS.negatives_dir, FLAGS.pre_train_file)
+    print('\n%d files combined in %s' % (total, FLAGS.pre_train_file))
 
 if __name__ == '__main__':
     tf.app.run()
