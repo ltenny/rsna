@@ -7,3 +7,5 @@ originals/*
 examples/*
 input/*
 *.tfrecord
+pretrain.state/*
+

@@ -73,6 +73,7 @@ class Record(object):
             features = tf.parse_single_example(example, features=feature)
             image = tf.decode_raw(features['image'], tf.uint8)
             label = tf.cast(features['label'], tf.int32)
+            label = tf.cast(label,tf.float32)
             width = tf.cast(features['image/width'], tf.int32)
             height = tf.cast(features['image/height'], tf.int32)
             channels = tf.cast(features['image/channels'], tf.int32)

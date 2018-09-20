@@ -7,26 +7,43 @@ import re
 import numpy as np 
 from utils.anchor import Anchor
 from utils.layer import Layer
-
-FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_boolean('use_fp16', False, """Use tf.float16 vs tf.float32""")
+from utils.record import Record
+from datetime import datetime
+import time
 
 TOWER_NAME = 'tower'
 class Model(object):
     def __init__(self, use_fp16 = False, scales=(8,16,32), ratios=(0.5,1,2)):
-        self._scales = scales
-        self._use_fp16 = use_fp16
-        self._ratios = ratios
-        self._k_anchors = len(scales) * len(ratios)
+        self.scales = scales
+        self.use_fp16 = use_fp16
+        self.ratios = ratios
+        self.k_anchors = len(scales) * len(ratios)
+        self.learning_rate = 2e-4
+        self.optimizer_decay = 0.5
+        self.pre_train_step = 0
+        self.log_frequency = 100
+        self.init_pre_train_complete = False
+
+    def init_pre_train(self, batch_size=32, state_dir = 'pretrain_dir', filename='pre_train.tfrecord', max_steps = 500000, 
+            threads = 16, examples_per_epoch = 28000, min_fraction = 0.4):
+        self.pre_train_batch_size = batch_size
+        self.pre_train_number_of_threads = threads
+        self.pre_train_number_of_examples_per_epoch = examples_per_epoch
+        self.pre_train_min_fraction_of_examples_in_queue = min_fraction
+        self.pre_train_max_steps = max_steps
+        self.pre_train_dir = state_dir
+        self.pre_train_file = filename
+        self.init_pre_train_complete = True
+
 
     def _variable_on_cpu(self, name, shape, initializer):
         with tf.device('/cpu:0'):
-            dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
+            dtype = tf.float16 if self.use_fp16 else tf.float32
             var = tf.get_variable(name, shape, initializer=initializer, dtype=dtype)
         return var
 
     def _variable_with_weight_decay(self, name, shape, stddev, wd=None):
-        dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
+        dtype = tf.float16 if self.use_fp16 else tf.float32
         var = self._variable_on_cpu(name, shape, tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
         if wd is not None:
             weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
@@ -36,12 +53,74 @@ class Model(object):
     def _activation_summary(self, x):
         tensor_name = re.sub('%s_[0-9]*/' % TOWER_NAME, '', x.op.name)
         tf.summary.histogram(tensor_name + '/activations', x)
-        tf.summary.scalar(tensor_name, '/sparsity', tf.nn.zero_fraction(x))
+        #tf.summary.scalar(tensor_name, '/sparsity', tf.nn.zero_fraction(x))
+
+    def _get_pretrain_op(self, loss, global_step):
+        optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay=self.optimizer_decay)
+        grads = optimizer.compute_gradients(loss)
+        return optimizer.apply_gradients(grads,global_step=global_step)
+
+    def _pretrain_loss(self, pretrain, labels):
+        return tf.reduce_mean(tf.squared_difference(pretrain, labels))
+
+    def pre_train(self):
+        if not self.init_pre_train_complete:
+            print('init_pre_train() not called!')
+            return
+
+        with tf.Graph().as_default():
+            global_step = tf.train.get_or_create_global_step()
+            min_queue_examples = int(self.pre_train_number_of_examples_per_epoch * self.pre_train_min_fraction_of_examples_in_queue)
+            with tf.device('/cpu:0'):
+                image, label = Record.read_pre_train_record([self.pre_train_file])
+                images, labels = tf.train.shuffle_batch([image, label], 
+                    batch_size=self.pre_train_batch_size, 
+                    num_threads = self.pre_train_number_of_threads,
+                    capacity = min_queue_examples + 3 * self.pre_train_batch_size,
+                    min_after_dequeue=min_queue_examples)
+            
+            _, pretrain = self.feature_network(images)
+            loss = self._pretrain_loss(pretrain, labels)
+            pretrain_op = self._get_pretrain_op(loss, global_step)
+
+            batch_size = self.pre_train_batch_size
+            logfreq = self.log_frequency
+            class _LoggerHook(tf.train.SessionRunHook):
+                def begin(self):
+                    self.pre_train_step = -1
+                    self.start_time = time.time()
+                
+                def before_run(self, run_context):
+                    self.pre_train_step += 1
+                    return tf.train.SessionRunArgs(loss)
+
+                def after_run(self, run_context, run_values):
+                    if self.pre_train_step % logfreq == 0:
+                        current_time = time.time()
+                        duration = current_time - self.start_time
+                        self.start_time = current_time
+
+                        loss_value = run_values.results
+                        examples_per_sec = logfreq * batch_size / duration
+                        sec_per_batch = float(duration / logfreq)
+
+                        format_str = ('%s: step %d, loss = %.3f  (%.1f examples/sec; %.3f sec/batch)')
+                        print(format_str % (datetime.now(), self.pre_train_step, loss_value, examples_per_sec, sec_per_batch))
+                
+            with tf.train.MonitoredTrainingSession(
+                checkpoint_dir = self.pre_train_dir,
+                hooks = [tf.train.StopAtStepHook(last_step=self.pre_train_max_steps),
+                            tf.train.NanTensorHook(loss),
+                            _LoggerHook()],
+                config = tf.ConfigProto(log_device_placement=False)) as mon_sess:
+
+                while not mon_sess.should_stop():
+                    mon_sess.run([pretrain_op])
 
 
     # roughly follow ConvNet layers from VGG-16 with changes from S. Ren et.al. (Faster R-CNN)
     # NB: the code is completely un-rolled to make it easy to understand and tweak
-    def build_rpn_model(self, images):
+    def feature_network(self, images):
         with tf.variable_scope('conv1') as scope:
             kernel = self._variable_with_weight_decay('weights', shape=[3,3,3,64], stddev=5e-2)
             conv = tf.nn.conv2d(images, kernel, [1,1,1,1], padding='SAME')
@@ -153,6 +232,35 @@ class Model(object):
             pre_activation = tf.nn.bias_add(conv, biases)
             conv13 = tf.nn.relu(pre_activation, name=scope.name)
             self._activation_summary(conv13)
+        
+        # the following layers are used only for pre-training
+        max_pool5 = tf.nn.max_pool(conv13, ksize=[1,2,2,1], strides=[1,2,2,1], padding='SAME', name='max_pool5')
+
+        with tf.variable_scope('fc1') as scope:
+            reshape = tf.reshape(max_pool5, [images.get_shape().as_list()[0], -1])
+            dim = reshape.get_shape()[1].value
+            weights = self._variable_with_weight_decay('weights', shape=[dim,384], stddev=0.04, wd=0.004)
+            biases = self._variable_on_cpu('biases', [384], tf.constant_initializer(0.1))
+            fc1 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)
+            self._activation_summary(fc1)
+
+        with tf.variable_scope('fc2') as scope:
+            weights = self._variable_with_weight_decay('weights', shape=[384, 192], stddev=0.04, wd=0.004)
+            biases = self._variable_on_cpu('biases', [192], tf.constant_initializer(0.1))
+            fc2 = tf.nn.relu(tf.matmul(fc1, weights) + biases, name=scope.name)
+            self._activation_summary(fc2)
+
+        with tf.variable_scope('fc3') as scope:
+            weights = self._variable_with_weight_decay('weights', shape=[192,1], stddev=0.04, wd=0.004)
+            biases = self._variable_on_cpu('biases', [1], tf.constant_initializer(0.1))
+            pretrain = tf.nn.relu(tf.matmul(fc2, weights) + biases, name=scope.name)
+            self._activation_summary(pretrain)
+
+        return conv3, pretrain
+
+
+    # builds the RPN
+    def region_proposal_network(self, images, features):
 
         # with all 13 convolutional layers VGG-16 complete, now we take Ren's approach for the RPN 
         with tf.variable_scope('ren_conv') as scope:
@@ -165,7 +273,7 @@ class Model(object):
 
             # build the 3x3 convnet
             kernel = self._variable_with_weight_decay('weights', shape=[3,3,512,512], stddev=5e-2)
-            conv = tf.nn.conv2d(conv13, kernel, [1,1,1,1], padding='SAME')
+            conv = tf.nn.conv2d(features, kernel, [1,1,1,1], padding='SAME')
             biases = self._variable_on_cpu('biases',[512], tf.constant_initializer(0.0))
             pre_activation = tf.nn.bias_add(conv, biases)
             ren_conv = tf.nn.relu(pre_activation, name=scope.name)
@@ -173,7 +281,7 @@ class Model(object):
 
         # box-classification layer
         with tf.variable_scope('rpn_cls') as scope:
-            channels = self._k_anchors * 2
+            channels = self.k_anchors * 2
             kernel = self._variable_with_weight_decay('weights', shape=[1,1,512,channels], stddev=5e-2)
             conv = tf.nn.conv2d(ren_conv, kernel, [1,1,1,1], padding='VALID')
             biases = self._variable_on_cpu('biases',[channels], tf.constant_initializer(0.0))
@@ -190,13 +298,10 @@ class Model(object):
         
         # box-prediction layer
         with tf.variable_scope('rpn_bbox_pred') as scope:
-            channels = self._k_anchors * 4
+            channels = self.k_anchors * 4
             kernel = self._variable_with_weight_decay('weights', shape=[1,1,512,channels], stddev=5e-2)
             conv = tf.nn.conv2d(ren_conv, kernel,[1,1,1,1], padding='VALID')
             biases = self._variable_on_cpu('biases',[channels], tf.constant_initializer(0,0))
             rpn_bbox_pred = tf.nn.bias_add(conv,biases)
 
-
-
-        # ren_reg has Ren's reg layer, ren_cls has Ren's cls layer
-        return ren_reg, ren_cls
+        # TODO: complete this

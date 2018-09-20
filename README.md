@@ -24,4 +24,4 @@ Notes
 
 - verify.py takes the TFRecord file created by prepare.py and performs all of the image pre-processing
     that is used in the pre-training for one batch, this is used simply to smoke test the 
-    pre-processing to verify
+    pre-processing to verify that the images/labels are serialized correctly and can be materialized for pre-training
