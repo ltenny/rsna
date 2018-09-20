@@ -20,7 +20,7 @@ Notes
     - a TFRecord files is created that contains all images from positives and negatives with
         labels 1 and 0, respectively.
     
-    - prepare.py should be run first to create the TFRecord which is used in pre-training
+    - prepare.py --do_full_prepare=True should be run first to create the TFRecord which is used in pre-training
 
 - verify.py takes the TFRecord file created by prepare.py and performs all of the image pre-processing
     that is used in the pre-training for one batch, this is used simply to smoke test the 
