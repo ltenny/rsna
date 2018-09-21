@@ -13,7 +13,7 @@ import time
 
 TOWER_NAME = 'tower'
 class Model(object):
-    def __init__(self, use_fp16 = False, scales=(8,16,32), ratios=(0.5,1,2)):
+    def __init__(self, use_fp16=True, scales=(8,16,32), ratios=(0.5,1,2)):
         self.scales = scales
         self.use_fp16 = use_fp16
         self.ratios = ratios
@@ -53,7 +53,7 @@ class Model(object):
     def _activation_summary(self, x):
         tensor_name = re.sub('%s_[0-9]*/' % TOWER_NAME, '', x.op.name)
         tf.summary.histogram(tensor_name + '/activations', x)
-        #tf.summary.scalar(tensor_name, '/sparsity', tf.nn.zero_fraction(x))
+        tf.summary.scalar(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
 
     def _get_pretrain_op(self, loss, global_step):
         optimizer = tf.train.RMSPropOptimizer(self.learning_rate, decay=self.optimizer_decay)
@@ -71,13 +71,18 @@ class Model(object):
         with tf.Graph().as_default():
             global_step = tf.train.get_or_create_global_step()
             min_queue_examples = int(self.pre_train_number_of_examples_per_epoch * self.pre_train_min_fraction_of_examples_in_queue)
+            rec = Record(1024,1024,1,self.use_fp16)
             with tf.device('/cpu:0'):
-                image, label = Record.read_pre_train_record([self.pre_train_file])
-                images, labels = tf.train.shuffle_batch([image, label], 
-                    batch_size=self.pre_train_batch_size, 
-                    num_threads = self.pre_train_number_of_threads,
-                    capacity = min_queue_examples + 3 * self.pre_train_batch_size,
-                    min_after_dequeue=min_queue_examples)
+                image, label = rec.read_pre_train_record([self.pre_train_file])
+                images, labels = tf.train.batch([image, label],
+                    batch_size = self.pre_train_batch_size,
+                    num_threads = self.pre_train_number_of_threads
+                )
+#                images, labels = tf.train.shuffle_batch([image, label], 
+#                    batch_size=self.pre_train_batch_size, 
+#                    num_threads = self.pre_train_number_of_threads,
+#                    capacity = min_queue_examples + 3 * self.pre_train_batch_size,
+#                    min_after_dequeue=min_queue_examples)
             
             _, pretrain = self.feature_network(images)
             loss = self._pretrain_loss(pretrain, labels)
@@ -121,8 +126,9 @@ class Model(object):
     # roughly follow ConvNet layers from VGG-16 with changes from S. Ren et.al. (Faster R-CNN)
     # NB: the code is completely un-rolled to make it easy to understand and tweak
     def feature_network(self, images):
+        images = tf.cast(images, tf.float16)
         with tf.variable_scope('conv1') as scope:
-            kernel = self._variable_with_weight_decay('weights', shape=[3,3,3,64], stddev=5e-2)
+            kernel = self._variable_with_weight_decay('weights', shape=[3,3,1,64], stddev=5e-2)
             conv = tf.nn.conv2d(images, kernel, [1,1,1,1], padding='SAME')
             biases = self._variable_on_cpu('biasas', [64], tf.constant_initializer(0.0))
             pre_activation = tf.nn.bias_add(conv, biases)
@@ -256,7 +262,7 @@ class Model(object):
             pretrain = tf.nn.relu(tf.matmul(fc2, weights) + biases, name=scope.name)
             self._activation_summary(pretrain)
 
-        return conv3, pretrain
+        return conv13, pretrain
 
 
     # builds the RPN

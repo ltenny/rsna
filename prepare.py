@@ -23,6 +23,7 @@ tf.app.flags.DEFINE_string('positives_dir','positives','Directory for the positi
 tf.app.flags.DEFINE_string('negatives_dir','negatives','Directory for the negative image regions')
 tf.app.flags.DEFINE_string('label_file','input/stage_1_train_labels.csv','Path to labels .csv file')
 tf.app.flags.DEFINE_string('image_path','input/stage_1_train_images','Root directory for the .dcm files containing the train CXRs')
+tf.app.flags.DEFINE_boolean('grayscale',True,'If True, the TFRecord file is created with 1 channel, grayscale')
 
 def _init_output_directories():
     if FLAGS.do_full_prepare:
@@ -80,7 +81,8 @@ def main(argv=None):
     
     # step 2: create the pre-training features by combining negatives and positives into pre_train.tfrecord
     print('\nCreating pre-train file...')
-    total = Record.create_pre_train_file(FLAGS.positives_dir, FLAGS.negatives_dir, FLAGS.pre_train_file)
+    rec = Record(1024,1024,1 if FLAGS.grayscale else 3)
+    total = rec.create_pre_train_file(FLAGS.positives_dir, FLAGS.negatives_dir, FLAGS.pre_train_file)
     print('\n%d files combined in %s' % (total, FLAGS.pre_train_file))
 
 if __name__ == '__main__':
