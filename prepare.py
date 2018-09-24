@@ -69,12 +69,14 @@ def main(argv=None):
             if v.hasBoundingBox:
                 for i in range(0,v.boundingBoxes.shape[0]):
                     box = v.boundingBoxes[i,:]
-                    CXRImage.extract_center_and_write(image,box,1024,1024,FLAGS.positives_dir)
+                    #CXRImage.extract_center_and_write(image,box,1024,1024,FLAGS.positives_dir)
+                    CXRImage.extract_anisotropic_scale_and_write(image,box,384,384,FLAGS.positives_dir)
                 CXRImage.write_image(image, FLAGS.examples_dir, "%s.jpg" % basefilename)
             else:
                 i = np.int32(np.random.randint(0, all_bounding_boxes.shape[0] - 1))
                 box = all_bounding_boxes[i,:]
-                CXRImage.extract_center_and_write(image,box,1024,1024,FLAGS.negatives_dir)
+                CXRImage.extract_anisotropic_scale_and_write(image,box,384,384,FLAGS.negatives_dir)
+                #CXRImage.extract_center_and_write(image,box,1024,1024,FLAGS.negatives_dir)
 
             CXRImage.write_image_with_bounding_boxes(image, FLAGS.originals_dir, "%s.jpg" % basefilename, v.boundingBoxes)
             counter = counter + 1

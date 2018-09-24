@@ -50,6 +50,29 @@ class CXRImage(object):
         dcm_data = pydicom.read_file(fullpath)
         return CXRImage.make_image_data(dcm_data.pixel_array)
 
+    @staticmethod
+    def extract_anisotropic_scale_and_write(image_data, box, height, width, path, filename=None):
+        h = image_data.shape[0]
+        w = image_data.shape[1]
+        extracted_image = CXRImage.extract_image(image_data,box)
+        rgb_average = np.array([np.average(extracted_image[:,:,i]) for i in range(3)]).astype(int)
+        new_image = np.full((h, w, 3), rgb_average,dtype=np.uint8)
+        bw = box[2] - box[0] # box width
+        bh = box[3] - box[1] # box height
+        y1 = np.ceil(h/2).astype(int) - np.floor(bh/2).astype(int)
+        x1 = np.ceil(w/2).astype(int) - np.floor(bw/2).astype(int)
+        new_image[y1:y1+bh,x1:x1+bw] = extracted_image
+        y1 = np.ceil(h/2).astype(int) - np.floor(height/2).astype(int)
+        x1 = np.ceil(w/2).astype(int) - np.floor(width/2).astype(int)
+        cropped_image = new_image[y1:y1+height,x1:x1+width]
+        
+        im = Image.fromarray(cropped_image)
+        im.thumbnail((height, width), Image.ANTIALIAS)
+        if filename:
+            im.save(os.path.join(path, filename))
+        else:
+            im.save(os.path.join(path,'%s.jpg' % str(uuid.uuid4())))
+
     # extracts box from image, centers on new image with background set to
     # the average of the extracted box, writes the new image to the given file
     @staticmethod

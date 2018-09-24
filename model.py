@@ -23,6 +23,8 @@ class Model(object):
         self.pre_train_step = 0
         self.log_frequency = 100
         self.init_pre_train_complete = False
+        self.pre_train_height = 384
+        self.pre_train_width = 384
 
     def init_pre_train(self, batch_size=32, state_dir = 'pretrain_dir', filename='pre_train.tfrecord', max_steps = 500000, 
             threads = 16, examples_per_epoch = 28000, min_fraction = 0.4):
@@ -68,21 +70,23 @@ class Model(object):
             print('init_pre_train() not called!')
             return
 
+        print(' ')
+        print('Pre-training with the following parameters:')
+        print('\tState directory: %s' % self.pre_train_dir)
+        print('\tTrainable variables are 16 bit? : %s' % ('Yes' if self.use_fp16 else 'No'))
+        print('\tBatch size: %d' % self.pre_train_batch_size)
+        print('\tTraining images are: [%d,%d,%d]' % (self.pre_train_height, self.pre_train_width, 1))
+        print(' ')
+
         with tf.Graph().as_default():
             global_step = tf.train.get_or_create_global_step()
-            min_queue_examples = int(self.pre_train_number_of_examples_per_epoch * self.pre_train_min_fraction_of_examples_in_queue)
-            rec = Record(1024,1024,1,self.use_fp16)
+            rec = Record(self.pre_train_height, self.pre_train_width, 1, self.use_fp16)
             with tf.device('/cpu:0'):
                 image, label = rec.read_pre_train_record([self.pre_train_file])
                 images, labels = tf.train.batch([image, label],
                     batch_size = self.pre_train_batch_size,
                     num_threads = self.pre_train_number_of_threads
                 )
-#                images, labels = tf.train.shuffle_batch([image, label], 
-#                    batch_size=self.pre_train_batch_size, 
-#                    num_threads = self.pre_train_number_of_threads,
-#                    capacity = min_queue_examples + 3 * self.pre_train_batch_size,
-#                    min_after_dequeue=min_queue_examples)
             
             _, pretrain = self.feature_network(images)
             loss = self._pretrain_loss(pretrain, labels)
@@ -126,7 +130,6 @@ class Model(object):
     # roughly follow ConvNet layers from VGG-16 with changes from S. Ren et.al. (Faster R-CNN)
     # NB: the code is completely un-rolled to make it easy to understand and tweak
     def feature_network(self, images):
-        images = tf.cast(images, tf.float16)
         with tf.variable_scope('conv1') as scope:
             kernel = self._variable_with_weight_decay('weights', shape=[3,3,1,64], stddev=5e-2)
             conv = tf.nn.conv2d(images, kernel, [1,1,1,1], padding='SAME')
@@ -168,6 +171,7 @@ class Model(object):
             conv = tf.nn.conv2d(max_pool2, kernel, [1,1,1,1], padding='SAME')
             biases = self._variable_on_cpu('biasas', [256], tf.constant_initializer(0.0))
             pre_activation = tf.nn.bias_add(conv, biases)
+            residual_1 = pre_activation
             conv5 = tf.nn.relu(pre_activation, name=scope.name)
             self._activation_summary(conv5)
 
@@ -183,7 +187,7 @@ class Model(object):
             kernel = self._variable_with_weight_decay('weights', shape=[3,3,256,256], stddev=5e-2)
             conv = tf.nn.conv2d(conv6, kernel, [1,1,1,1], padding='SAME')
             biases = self._variable_on_cpu('biasas', [256], tf.constant_initializer(0.0))
-            pre_activation = tf.nn.bias_add(conv, biases)
+            pre_activation = tf.nn.bias_add(conv, biases)  +  residual_1
             conv7 = tf.nn.relu(pre_activation, name=scope.name)
             self._activation_summary(conv7)
 
@@ -194,6 +198,7 @@ class Model(object):
             conv = tf.nn.conv2d(max_pool3, kernel, [1,1,1,1], padding='SAME')
             biases = self._variable_on_cpu('biasas', [512], tf.constant_initializer(0.0))
             pre_activation = tf.nn.bias_add(conv, biases)
+            residual_2 = pre_activation
             conv8 = tf.nn.relu(pre_activation, name=scope.name)
             self._activation_summary(conv8)
 
@@ -209,7 +214,7 @@ class Model(object):
             kernel = self._variable_with_weight_decay('weights', shape=[3,3,512,512], stddev=5e-2)
             conv = tf.nn.conv2d(conv9, kernel, [1,1,1,1], padding='SAME')
             biases = self._variable_on_cpu('biasas', [512], tf.constant_initializer(0.0))
-            pre_activation = tf.nn.bias_add(conv, biases)
+            pre_activation = tf.nn.bias_add(conv, biases) + residual_2
             conv10 = tf.nn.relu(pre_activation, name=scope.name)
             self._activation_summary(conv10)
 
@@ -235,7 +240,7 @@ class Model(object):
             kernel = self._variable_with_weight_decay('weights', shape=[3,3,512,512], stddev=5e-2)
             conv = tf.nn.conv2d(conv12, kernel, [1,1,1,1], padding='SAME')
             biases = self._variable_on_cpu('biasas', [512], tf.constant_initializer(0.0))
-            pre_activation = tf.nn.bias_add(conv, biases)
+            pre_activation = tf.nn.bias_add(conv, biases) + max_pool4
             conv13 = tf.nn.relu(pre_activation, name=scope.name)
             self._activation_summary(conv13)
         

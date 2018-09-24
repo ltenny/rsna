@@ -8,10 +8,6 @@ import glob
 from PIL import Image
 import numpy as np 
 
-IMAGE_HEIGHT = 1024
-IMAGE_WIDTH = 1024
-IMAGE_CHANNELS = 1
-
 # class to manage data records
 class Record(object):
     def __init__(self, height, width, channels, use_fp16=False):
@@ -80,12 +76,13 @@ class Record(object):
 
             label = tf.reshape(label,[])
             image = tf.reshape(image, [self.height, self.width, self.channels])
-            float_image = tf.cast(image, tf.float16)# if self.use_fp16 else tf.float32)
-
+            float_image = tf.cast(image, tf.float32)
+            
             # data augmentation - introduce random brightness and random contrast
             distorted_image = tf.image.random_brightness(float_image, max_delta=63)
             distorted_image = tf.image.random_contrast(distorted_image, lower=0.2, upper=1.8)
 
             standardized_image = tf.image.per_image_standardization(distorted_image)
+            standardized_image = tf.cast(standardized_image, tf.float16 if self.use_fp16 else tf.float32)
             standardized_image.set_shape([self.height, self.width, self.channels])
             return standardized_image, label
