@@ -50,6 +50,39 @@ class CXRImage(object):
         dcm_data = pydicom.read_file(fullpath)
         return CXRImage.make_image_data(dcm_data.pixel_array)
 
+    # computes the direction and energy for the given pixel centered in a 3x3 matrix of the data 
+    # using the right singular vector and singular values from the SVD of the 9x2 matrix of the gradients, energy is computed using
+    # R = (s1 - s2)/(s1 + s2) for stability, returns [direction, energy, 0]
+    # NB: grads has shape [2] where [0] is partial df/dy and [1] is partial df/dx, this yields a 9x2 matrix, partials df/dx
+    # in first col, partials df/dy in second column, 3*3=9 rows, hence 9x2, called F, svd(F) = U*S*V, we use S for energy
+    # and V[:,0] for direction
+    @staticmethod
+    def compute_direction_and_energy(grads, x, y):
+        pdy = grads[0][y-1:y+2,x-1:x+2]
+        pdx = grads[1][y-1:y+2,x-1:x+2]
+        F = np.column_stack((np.reshape(pdx,[-1]),np.reshape(pdy,[-1]))) # F is 9x2 [[pdx, pdy]...[pdx, pdy]]
+        _,S,V = np.linalg.svd(F)
+        energy = (S[0] - S[1])/(S[0] + S[1])
+        rotateTransform = np.array([[0., -1.],[1.,0.]]) # need normal to gradient, so rotate by pi/2
+        direction = V[:,0].dot(rotateTransform)
+        return direction, energy
+
+    # extract, compute direction and intensity of each pixel and write
+    @staticmethod
+    def extract_xlate_and_write(image_data, box, height, width, path, filename=None):
+        extracted_image = CXRImage.extract_image(image_data, box)
+        bw = box[2] - box[0]
+        bh = box[3] - box[1]
+        one_channel_data = extracted_image[:,:,0:1]
+        reshaped = np.reshape(one_channel_data,[bh,-1])
+        
+        # step 1 - compute the gradient grads[0] is the partial df/dy and grads[1] is the partial df/dx
+        grads = np.gradient(reshaped)
+
+
+
+
+
     @staticmethod
     def extract_anisotropic_scale_and_write(image_data, box, height, width, path, filename=None):
         h = image_data.shape[0]

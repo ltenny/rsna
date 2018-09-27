@@ -24,6 +24,7 @@ tf.app.flags.DEFINE_string('negatives_dir','negatives','Directory for the negati
 tf.app.flags.DEFINE_string('label_file','input/stage_1_train_labels.csv','Path to labels .csv file')
 tf.app.flags.DEFINE_string('image_path','input/stage_1_train_images','Root directory for the .dcm files containing the train CXRs')
 tf.app.flags.DEFINE_boolean('grayscale',True,'If True, the TFRecord file is created with 1 channel, grayscale')
+tf.app.flags.DEFINE_integer('image_size',256,'Width and Height for the example images')
 
 def _init_output_directories():
     if FLAGS.do_full_prepare:
@@ -70,12 +71,12 @@ def main(argv=None):
                 for i in range(0,v.boundingBoxes.shape[0]):
                     box = v.boundingBoxes[i,:]
                     #CXRImage.extract_center_and_write(image,box,1024,1024,FLAGS.positives_dir)
-                    CXRImage.extract_anisotropic_scale_and_write(image,box,384,384,FLAGS.positives_dir)
+                    CXRImage.extract_anisotropic_scale_and_write(image,box,FLAGS.image_size,FLAGS.image_size,FLAGS.positives_dir)
                 CXRImage.write_image(image, FLAGS.examples_dir, "%s.jpg" % basefilename)
             else:
                 i = np.int32(np.random.randint(0, all_bounding_boxes.shape[0] - 1))
                 box = all_bounding_boxes[i,:]
-                CXRImage.extract_anisotropic_scale_and_write(image,box,384,384,FLAGS.negatives_dir)
+                CXRImage.extract_anisotropic_scale_and_write(image,box,FLAGS.image_size,FLAGS.image_size,FLAGS.negatives_dir)
                 #CXRImage.extract_center_and_write(image,box,1024,1024,FLAGS.negatives_dir)
 
             CXRImage.write_image_with_bounding_boxes(image, FLAGS.originals_dir, "%s.jpg" % basefilename, v.boundingBoxes)

@@ -3,6 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+from tensorboard.plugins.beholder import BeholderHook
+
 import re
 import numpy as np 
 from utils.anchor import Anchor
@@ -18,13 +20,14 @@ class Model(object):
         self.use_fp16 = use_fp16
         self.ratios = ratios
         self.k_anchors = len(scales) * len(ratios)
-        self.learning_rate = 2e-4
+        self.learning_rate = 0.001
         self.optimizer_decay = 0.5
+        self.optimizer_momentum = 0.0
         self.pre_train_step = 0
         self.log_frequency = 100
         self.init_pre_train_complete = False
-        self.pre_train_height = 384
-        self.pre_train_width = 384
+        self.pre_train_height = 256
+        self.pre_train_width = 256
 
     def init_pre_train(self, batch_size=32, state_dir = 'pretrain_dir', filename='pre_train.tfrecord', max_steps = 500000, 
             threads = 16, examples_per_epoch = 28000, min_fraction = 0.4):
@@ -45,8 +48,10 @@ class Model(object):
         return var
 
     def _variable_with_weight_decay(self, name, shape, stddev, wd=None):
+        initializer = tf.contrib.layers.xavier_initializer(uniform=True)
         dtype = tf.float16 if self.use_fp16 else tf.float32
-        var = self._variable_on_cpu(name, shape, tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
+#        var = self._variable_on_cpu(name, shape, tf.truncated_normal_initializer(stddev=stddev, dtype=dtype))
+        var = self._variable_on_cpu(name, shape, initializer)
         if wd is not None:
             weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
             tf.add_to_collection('losses', weight_decay)
@@ -63,7 +68,11 @@ class Model(object):
         return optimizer.apply_gradients(grads,global_step=global_step)
 
     def _pretrain_loss(self, pretrain, labels):
-        return tf.reduce_mean(tf.squared_difference(pretrain, labels))
+        #loss = tf.reduce_mean(tf.squared_difference(tf.reshape(pretrain,[-1]), labels))
+        loss = tf.losses.log_loss(tf.reshape(labels,[64,1]), tf.reshape(pretrain,[64,1]),weights=2.0,epsilon=1e-4)
+        tf.summary.scalar("loss", loss)
+        tf.summary.scalar("positive_labels",tf.count_nonzero(labels))
+        return loss
 
     def pre_train(self):
         if not self.init_pre_train_complete:
@@ -76,6 +85,9 @@ class Model(object):
         print('\tTrainable variables are 16 bit? : %s' % ('Yes' if self.use_fp16 else 'No'))
         print('\tBatch size: %d' % self.pre_train_batch_size)
         print('\tTraining images are: [%d,%d,%d]' % (self.pre_train_height, self.pre_train_width, 1))
+        print('\tLearning rate: %.3f' % self.learning_rate)
+        print('\tRMSProp Optimizer decay: %.3f' % self.optimizer_decay)
+        print('\tRMSProp Optimizer momentum: %.3f' % self.optimizer_momentum)
         print(' ')
 
         with tf.Graph().as_default():
@@ -94,6 +106,7 @@ class Model(object):
 
             batch_size = self.pre_train_batch_size
             logfreq = self.log_frequency
+            #beholder_hook = BeholderHook(self.pre_train_dir)
             class _LoggerHook(tf.train.SessionRunHook):
                 def begin(self):
                     self.pre_train_step = -1
