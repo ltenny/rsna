@@ -62,25 +62,33 @@ class CXRImage(object):
         pdx = grads[1][y-1:y+2,x-1:x+2]
         F = np.column_stack((np.reshape(pdx,[-1]),np.reshape(pdy,[-1]))) # F is 9x2 [[pdx, pdy]...[pdx, pdy]]
         _,S,V = np.linalg.svd(F)
-        energy = (S[0] - S[1])/(S[0] + S[1])
+        if S[0] != S[0] or S[1] != S[1] or (S[1] + S[0]) == 0.:
+            energy = 0.0
+        else:
+            energy = (S[0] - S[1])/(S[0] + S[1])
         rotateTransform = np.array([[0., -1.],[1.,0.]]) # need normal to gradient, so rotate by pi/2
         direction = V[:,0].dot(rotateTransform)
         return direction, energy
 
-    # extract, compute direction and intensity of each pixel and write
-    @staticmethod
-    def extract_xlate_and_write(image_data, box, height, width, path, filename=None):
-        extracted_image = CXRImage.extract_image(image_data, box)
-        bw = box[2] - box[0]
-        bh = box[3] - box[1]
-        one_channel_data = extracted_image[:,:,0:1]
-        reshaped = np.reshape(one_channel_data,[bh,-1])
-        
-        # step 1 - compute the gradient grads[0] is the partial df/dy and grads[1] is the partial df/dx
+    @staticmethod 
+    def xlate_image(image_data):
+        h = image_data.shape[0]
+        w = image_data.shape[1]
+        one_channel = image_data[:,:,0:1]
+        reshaped = np.reshape(one_channel,[h,-1])
         grads = np.gradient(reshaped)
-
-
-
+        result = np.full((h,w,3),0.0)
+        for r in range(1,h-1,1):
+            for c in range(1,w-1,1):
+                d,e = CXRImage.compute_direction_and_energy(grads,c,r)
+                result[r][c][0] = d[0]
+                result[r][c][1] = d[1]
+                if e != e:
+                    e = 0.0
+                result[r][c][2] = e
+        delta = abs(np.min(result))
+        divby = np.max(result+delta)
+        return ((result + delta)/divby)
 
 
     @staticmethod

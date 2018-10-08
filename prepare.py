@@ -79,7 +79,9 @@ def main(argv=None):
                 CXRImage.extract_anisotropic_scale_and_write(image,box,FLAGS.image_size,FLAGS.image_size,FLAGS.negatives_dir)
                 #CXRImage.extract_center_and_write(image,box,1024,1024,FLAGS.negatives_dir)
 
-            CXRImage.write_image_with_bounding_boxes(image, FLAGS.originals_dir, "%s.jpg" % basefilename, v.boundingBoxes)
+            if (v.hasBoundingBox):
+                img = (CXRImage.xlate_image(image) * 255).astype(np.uint8)
+                CXRImage.write_image_with_bounding_boxes(img, FLAGS.originals_dir, "%s.jpg" % basefilename, v.boundingBoxes)
             counter = counter + 1
     
     # step 2: create the pre-training features by combining negatives and positives into pre_train.tfrecord
